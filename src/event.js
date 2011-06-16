@@ -25,9 +25,11 @@
   function add(element, events, fn, selector, delegate){
     var id = zid(element), set = (handlers[id] || (handlers[id] = []));
     events.split(/\s/).forEach(function(event){
-      var handler = $.extend(parse(event), {fn: fn, sel: selector, del: delegate, i: set.length});
+      var callback = delegate || fn;
+      var proxyfn = function(event) { return callback.call(element, event, event.data) };
+      var handler = $.extend(parse(event), {fn: fn, proxy: proxyfn, sel: selector, del: delegate, i: set.length});
       set.push(handler);
-      element.addEventListener(handler.e, delegate || fn, false);
+      element.addEventListener(handler.e, proxyfn, false);
     });
   }
   function remove(element, events, fn, selector){
@@ -35,19 +37,12 @@
     (events || '').split(/\s/).forEach(function(event){
       findHandlers(element, event, fn, selector).forEach(function(handler){
         delete handlers[id][handler.i];
-        element.removeEventListener(handler.e, handler.del || handler.fn, false);
+        element.removeEventListener(handler.e, handler.proxy, false);
       });
     });
   }
 
-  $.event = {
-    add: function(element, events, fn){
-      add(element, events, fn);
-    },
-    remove: function(element, events, fn){
-      remove(element, events, fn);
-    }
-  };
+  $.event = { add: add, remove: remove }
 
   $.fn.bind = function(event, callback){
     return this.each(function(){
@@ -62,8 +57,8 @@
   $.fn.one = function(event, callback){
     return this.each(function(){
       var self = this;
-      add(this, event, function wrapper(){
-        callback();
+      add(this, event, function wrapper(evt){
+        callback.call(self, evt);
         remove(self, event, arguments.callee);
       });
     });
@@ -80,13 +75,13 @@
 
   $.fn.delegate = function(selector, event, callback){
     return this.each(function(i, element){
-      add(element, event, callback, selector, function(e){
+      add(element, event, callback, selector, function(e, data){
         var target = e.target, nodes = $$(element, selector);
         while (target && nodes.indexOf(target) < 0) target = target.parentNode;
         if (target && !(target === element) && !(target === document)) {
           callback.call(target, $.extend(createProxy(e), {
             currentTarget: target, liveFired: element
-          }));
+          }), data);
         }
       });
     });
@@ -106,10 +101,12 @@
     return this;
   };
 
-  $.fn.trigger = function(event){
+  $.fn.trigger = function(event, data){
     return this.each(function(){
       var e = document.createEvent('Events');
-      this.dispatchEvent(e, e.initEvent(event, true, true));
+      e.initEvent(event, true, true)
+      e.data = data;
+      this.dispatchEvent(e);
     });
   };
 })(Zepto);

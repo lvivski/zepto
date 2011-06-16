@@ -1,5 +1,7 @@
 (function($){
-  var jsonpID = 0;
+  var jsonpID = 0,
+      isObject = $.isObject,
+      key;
 
   function empty() {}
 
@@ -8,7 +10,7 @@
         script = document.createElement('script');
     window[jsonpString] = function(data){
       options.success(data);
-      delete window.jsonpString;
+      delete window[jsonpString];
     };
     script.src = options.url.replace(/=\?/, '=' + jsonpString);
     $('head').append(script);
@@ -34,22 +36,17 @@
     if (/=\?/.test(settings.url)) return $.ajaxJSONP(settings);
 
     if (!settings.url) settings.url = window.location.toString();
-    if (settings.data && !settings.contentType) settings.contentType = "application/x-www-form-urlencoded";
+    if (settings.data && !settings.contentType) settings.contentType = 'application/x-www-form-urlencoded';
+    if (isObject(settings.data)) settings.data = $.param(settings.data);
 
     if (settings.type.match(/get/i) && settings.data) {
-      var queryString,
-          objectType = Object.prototype.toString.call(settings.data).slice(8, -1);
-      if (objectType == 'Object' || objectType == 'Array') {
-        queryString = $.param(settings.data);
-      } else {
-        queryString = settings.data;
-      }
+      var queryString = settings.data;
       if (settings.url.match(/\?.*=/)) {
         queryString = '&' + queryString;
-      } else if (queryString.slice(0, 1) !== '?') {
+      } else if (queryString[0] != '?') {
         queryString = '?' + queryString;
       }
-      settings.url = settings.url + queryString;
+      settings.url += queryString;
     }
 
     var mime = settings.accepts[settings.dataType],
@@ -82,15 +79,17 @@
       xhr.abort();
       return false;
     }
-    if (settings.data instanceof Object) settings.data = $.param(settings.data);
+
     if (settings.contentType) settings.headers['Content-Type'] = settings.contentType;
     for (name in settings.headers) xhr.setRequestHeader(name, settings.headers[name]);
     xhr.send(settings.data);
+
+    return xhr;
   };
 
   $.get = function(url, success){ $.ajax({ url: url, success: success }) };
   $.post = function(url, data, success, dataType){
-    if (data instanceof Function) dataType = dataType || success, success = data, data = null;
+    if ($.isFunction(data)) dataType = dataType || success, success = data, data = null;
     $.ajax({ type: 'POST', url: url, data: data, success: success, dataType: dataType });
   };
   $.getJSON = function(url, success){ $.ajax({ url: url, success: success, dataType: 'json' }) };
@@ -109,18 +108,18 @@
   };
 
   $.param = function(obj, v){
-    var s = [],
-        rec = '',
-        add = function(key, value){
-          if(v) s[s.length] = encodeURIComponent(v + "[" + key +"]") + '=' + encodeURIComponent(value);
-          else s[s.length] = encodeURIComponent(key) + '=' + encodeURIComponent(value);
-        };
-    for(var i in obj){
-      if(obj[i] instanceof Array || obj[i] instanceof Object)
-        rec += (s.length + rec.length > 0 ? '&' : '') + $.param(obj[i], (v ? v + "[" + i + "]" : i));
+    var result = [], add = function(key, value){
+      result.push(encodeURIComponent(v ? v + '[' + key + ']' : key)
+        + '=' + encodeURIComponent(value));
+      },
+      isObjArray = $.isArray(obj);
+
+    for(key in obj)
+      if(isObject(obj[key]))
+        result.push($.param(obj[key], (v ? v + '[' + key + ']' : key)));
       else
-        add(obj instanceof Array ? '' : i, obj[i]);
-    };
-    return s.join("&").replace(/%20/g, "+") + rec;
+        add(isObjArray ? '' : key, obj[key]);
+
+    return result.join('&').replace('%20', '+');
   };
 })(Zepto);
