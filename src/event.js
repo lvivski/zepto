@@ -30,7 +30,13 @@
     var id = zid(element), set = (handlers[id] || (handlers[id] = []));
     events.split(/\s/).forEach(function(event){
       var callback = delegate || fn;
-      var proxyfn = function(event) { return callback.call(element, event, event.data) };
+      var proxyfn = function (event) {
+        var result = callback.call(element, event, event.data);
+        if (result === false) {
+          event.preventDefault();
+        }
+        return result;
+      };
       var handler = $.extend(parse(event), {fn: fn, proxy: proxyfn, sel: selector, del: delegate, i: set.length});
       set.push(handler);
       element.addEventListener(handler.e, proxyfn, false);
@@ -116,6 +122,13 @@
       this.dispatchEvent(event);
     });
   };
+
+  // add support to all events supported with jQuery which are simple wrappers for native events
+  ('blur focus focusin focusout load resize scroll unload click dblclick '+
+  'mousedown mouseup mousemove mouseover mouseout mouseenter mouseleave '+
+  'change select submit keydown keypress keyup error').split(' ').forEach(function(event) {
+    $.fn[event] = function(callback){ return this.bind(event, callback) };
+  });
 
   $.Event = function(src, props) {
     var event = document.createEvent('Events');

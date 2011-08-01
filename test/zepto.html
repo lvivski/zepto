@@ -455,6 +455,34 @@
         t.assertEqual('name=banana,taste=sweet', results.sort().join(','));
       },
 
+      testDollarEach: function(t){
+        var array = ['a','b','c'], object = { a: 1, b: 2, c: 3 }, result;
+
+        result = [];
+        $.each(array, function(idx, val){
+          result.push(idx);
+          result.push(val);
+        });
+        t.assertEqual('0a1b2c', result.join(''));
+
+        result = [];
+        $.each(object, function(key, val){
+          result.push(key);
+          result.push(val);
+        });
+        t.assertEqual('a1b2c3', result.join(''));
+
+        result = [];
+        $.each(array, function(idx, val){
+          result.push(idx);
+          result.push(val);
+          return idx<1;
+        });
+        t.assertEqual('0a1b', result.join(''));
+
+        t.assertEqual('abc', $.each(array, function(){}).join(''));
+      },
+
       testEq: function(t){
         var $els = $('#eq_test div');
         t.assertLength(1, $els.eq(0));
@@ -890,6 +918,23 @@
         t.assertEqual(10, counter);
       },
 
+      testBindPreventDefault: function (t) {
+        var link = $('<a href="#"></a>'),
+            prevented = false;
+
+        link
+          .appendTo('body')
+          .bind('click', function () {
+            return false;
+          })
+          .bind('click', function (e) {
+            prevented = e.defaultPrevented;
+          })
+          .trigger('click');
+
+        t.assert(prevented);
+      },
+
       testCreateEventObject: function(t){
         var e = $.Event('custom');
         t.assertEqual('custom', e.type);
@@ -1135,6 +1180,23 @@
         t.assertEqualCollection($(document.body), context);
       },
 
+      testDOMEventWrappers: function(t){
+        var events = ('blur focus focusin focusout load resize scroll unload click dblclick '+
+          'mousedown mouseup mousemove mouseover mouseout mouseenter mouseleave '+
+          'change select submit keydown keypress keyup error').split(' ');
+
+        var el = $('#another_element'), count = 0;
+
+        events.forEach(function(event){
+          t.assertTrue($.isFunction(el[event]));
+        });
+
+        el.click(function(){ count++ });
+        click(el.get(0));
+
+        t.assertEqual(1, count);
+      },
+
       testAttr: function(t){
         var els = $('#attr_1, #attr_2');
 
@@ -1377,6 +1439,25 @@
         );
       },
 
+      testAppendEval: function (t) {
+        window.someGlobalVariable = false;
+        $('<' + 'script>window.someGlobalVariable = true;</script' + '>').appendTo('body');
+        t.assert(window.someGlobalVariable);
+
+        window.someGlobalVariable = false;
+        $('<' + 'script>this.someGlobalVariable = true;</script' + '>').appendTo('body');
+        t.assert(window.someGlobalVariable);
+      },
+
+      testHtmlEval: function (t) {
+        window.someGlobalVariable = false;
+        var div = $('<div></div>');
+        div
+          .appendTo('body')
+          .html('<' + 'script>window.someGlobalVariable = true;</script' + '>');
+        t.assert(window.someGlobalVariable);
+      },
+
       testRemove: function (t) {
         var newElement1 = $('<div id="some_new_element_1" />');
 
@@ -1531,17 +1612,6 @@
         var foo = false;
         $(document).ready(function () { $(document).ready(function () { foo = true; }) });
         t.assert(foo);
-      },
-
-      testFormSubmit: function (t) {
-        // Test form submit action
-        var formSubmitted = false;
-        $('#some_form').get(0).submit = function (e) {
-          formSubmitted = true;
-          e.preventDefault();
-        };
-        $('#some_form').submit();
-        t.assert(formSubmitted);
       },
 
       testSlice: function (t) {

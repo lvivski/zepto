@@ -15,6 +15,7 @@ ZEPTO_FILES    = [
   File.join(ZEPTO_SRC_DIR,'detect.js'),
   File.join(ZEPTO_SRC_DIR,'fx.js'),
   File.join(ZEPTO_SRC_DIR,'ajax.js'),
+  File.join(ZEPTO_SRC_DIR,'form.js'),
   # File.join(ZEPTO_SRC_DIR,'assets.js'),
   File.join(ZEPTO_SRC_DIR,'touch.js')
   # File.join(ZEPTO_SRC_DIR,'gesture.js')
@@ -111,9 +112,10 @@ task :yuidist do
   process_minified src, target
 end
 
-desc "Genetated documentation from sources"
+desc "Generate docco documentation from sources."
 task :docs do
   puts "Generating docs..."
+  puts "Note: to work, install node.js first, then install docco with 'sudo npm install docco -g'."
   puts `docco src/*`
 end
 

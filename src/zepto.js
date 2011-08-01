@@ -126,6 +126,19 @@ var Zepto = (function() {
     return flatten(values);
   }
 
+  $.each = function(elements, callback) {
+    var i, key;
+    if (likeArray(elements))
+      for(i = 0; i < elements.length; i++) {
+        if(callback(i, elements[i]) === false) return elements;
+      }
+    else
+      for(key in elements) {
+        if(callback(key, elements[key]) === false) return elements;
+      }
+    return elements;
+  }
+
   $.fn = {
     forEach: emptyArray.forEach,
     reduce: emptyArray.reduce,
@@ -270,7 +283,10 @@ var Zepto = (function() {
     html: function(html){
       return html === undefined ?
         (this.length > 0 ? this[0].innerHTML : null) :
-        this.each(function(idx){ this.innerHTML = funcArg(this, html, idx, this.innerHTML) });
+        this.each(function (idx) {
+          var originHtml = this.innerHTML;
+          $(this).empty().append( funcArg(this, html, idx, originHtml) );
+        });
     },
     text: function(text){
       return text === undefined ?
@@ -353,15 +369,6 @@ var Zepto = (function() {
        ((when !== undefined && !when) || $(this).hasClass(newName)) ?
          $(this).removeClass(newName) : $(this).addClass(newName)
       });
-    },
-    submit: function () {
-      return this.each(function () {
-        try {
-          // Submit first form element
-          this.submit();
-          return;
-        } catch(e) {};
-      });
     }
   };
 
@@ -391,6 +398,13 @@ var Zepto = (function() {
       null);                                  // append
   }
 
+  function traverseNode (node, fun) {
+    fun(node);
+    for (key in node.childNodes) {
+      traverseNode(node.childNodes[key], fun);
+    }
+  }
+
   adjacencyOperators.forEach(function(key, operator) {
     $.fn[key] = function(html){
       var nodes = typeof(html) == 'object' ? html : fragment(html);
@@ -401,6 +415,11 @@ var Zepto = (function() {
       return this.each(function(index, target){
         for (var i = 0; i < nodes.length; i++) {
           var node = nodes[inReverse ? nodes.length-i-1 : i];
+          traverseNode(node, function (node) {
+            if (node.nodeName != null && node.nodeName.toUpperCase() === 'SCRIPT') {
+              window['eval'].call(window, node.innerHTML);
+            }
+          });
           if (copyByClone && index < size - 1) node = node.cloneNode(true);
           insert(operator, target, node);
         }
