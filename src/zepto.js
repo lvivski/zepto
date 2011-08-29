@@ -84,7 +84,7 @@ var Zepto = (function() {
       else if (elementTypes.indexOf(selector.nodeType) >= 0 || selector === window)
         dom = [selector], selector = null;
       else if (fragmentRE.test(selector))
-        dom = fragment(selector, RegExp.$1), selector = null;
+        dom = fragment(selector.trim(), RegExp.$1), selector = null;
       else if (selector.nodeType && selector.nodeType == 3) dom = [selector];
       else dom = $$(document, selector);
       return Z(dom, selector);
@@ -171,7 +171,7 @@ var Zepto = (function() {
     },
     filter: function(selector){
       return $([].filter.call(this, function(element){
-        return $$(element.parentNode, selector).indexOf(element) >= 0;
+        return element.parentNode && $$(element.parentNode, selector).indexOf(element) >= 0;
       }));
     },
     end: function(){
@@ -326,8 +326,13 @@ var Zepto = (function() {
       };
     },
     css: function(property, value){
-      if (value === undefined && typeof property == 'string')
-        return this[0].style[camelize(property)] || getComputedStyle(this[0], '').getPropertyValue(property);
+      if (value === undefined && typeof property == 'string') {
+        return(
+          this.length == 0
+            ? undefined
+            : this[0].style[camelize(property)] || getComputedStyle(this[0], '').getPropertyValue(property)
+        );
+      }
       var css = '';
       for (key in property) css += dasherize(key) + ':' + maybeAddPx(key, property[key]) + ';';
       if (typeof property == 'string') css = dasherize(property) + ":" + maybeAddPx(property, value);

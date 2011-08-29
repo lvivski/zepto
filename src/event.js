@@ -3,7 +3,10 @@
 //     Zepto.js may be freely distributed under the MIT license.
 
 (function($){
-  var $$ = $.qsa, handlers = {}, _zid = 1;
+  var $$ = $.qsa, handlers = {}, _zid = 1, specialEvents={};
+
+  specialEvents.click = specialEvents.mousedown = specialEvents.mouseup = specialEvents.mousemove = 'MouseEvents';
+
   function zid(element) {
     return element._zid || (element._zid = _zid++);
   }
@@ -31,7 +34,7 @@
     events.split(/\s/).forEach(function(event){
       var callback = delegate || fn;
       var proxyfn = function (event) {
-        var result = callback.call(element, event, event.data);
+        var result = callback.apply(element, [event].concat(event.data));
         if (result === false) {
           event.preventDefault();
         }
@@ -74,12 +77,22 @@
     });
   };
 
-  var eventMethods = ['preventDefault', 'stopImmediatePropagation', 'stopPropagation'];
+  var returnTrue = function(){return true},
+      returnFalse = function(){return false},
+      eventMethods = {
+        preventDefault: 'isDefaultPrevented',
+        stopImmediatePropagation: 'isImmediatePropagationStopped',
+        stopPropagation: 'isPropagationStopped'
+      };
   function createProxy(event) {
     var proxy = $.extend({originalEvent: event}, event);
-    eventMethods.forEach(function(key) {
-      proxy[key] = function() {return event[key].apply(event, arguments)};
-    });
+    $.each(eventMethods, function(name, predicate) {
+      proxy[name] = function(){
+        this[predicate] = returnTrue;
+        return event[name].apply(event, arguments);
+      };
+      proxy[predicate] = returnFalse;
+    })
     return proxy;
   }
 
@@ -112,28 +125,45 @@
   };
 
   $.fn.trigger = function(event, data){
-    var type = event.type || event;
-    if(typeof event !== "object"){
-      event = document.createEvent('Events');
-      event.initEvent(type, true, true)
-    }
+    if (typeof event == 'string') event = $.Event(event);
     event.data = data;
-    return this.each(function(){
-      this.dispatchEvent(event);
-    });
+    return this.each(function(){ this.dispatchEvent(event) });
   };
 
-  // add support to all events supported with jQuery which are simple wrappers for native events
-  ('blur focus focusin focusout load resize scroll unload click dblclick '+
-  'mousedown mouseup mousemove mouseover mouseout mouseenter mouseleave '+
-  'change select submit keydown keypress keyup error').split(' ').forEach(function(event) {
+  // triggers event handlers on current element just as if an event occurred,
+  // doesn't trigger an actual event, doesn't bubble
+  $.fn.triggerHandler = function(event, data){
+    var e, result;
+    this.each(function(i, element){
+      e = createProxy(typeof event == 'string' ? $.Event(event) : event);
+      e.data = data; e.target = element;
+      $.each(findHandlers(element, event.type || event), function(i, handler){
+        result = handler.proxy(e);
+        if (e.isImmediatePropagationStopped()) return false;
+      });
+    });
+    return result;
+  };
+
+  // shortcut methods for `.bind(event, fn)` for each event type
+  ('focusin focusout load resize scroll unload click dblclick '+
+  'mousedown mouseup mousemove mouseover mouseout '+
+  'change select keydown keypress keyup error').split(' ').forEach(function(event) {
     $.fn[event] = function(callback){ return this.bind(event, callback) };
   });
 
-  $.Event = function(src, props) {
-    var event = document.createEvent('Events');
+  ['focus', 'blur'].forEach(function(name) {
+    $.fn[name] = function(callback) {
+      if (callback) this.bind(name, callback);
+      else if (this.length) try { this.get(0)[name]() } catch(e){};
+      return this;
+    };
+  });
+
+  $.Event = function(type, props) {
+    var event = document.createEvent(specialEvents[type] || 'Events');
     if (props) $.extend(event, props);
-    event.initEvent(src, true, true);
+    event.initEvent(type, !(props && props.bubbles === false), true, null, null, null, null, null, null, null, null, null, null, null, null);
     return event;
   };
 
