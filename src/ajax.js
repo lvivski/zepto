@@ -5,7 +5,61 @@
 (function($){
   var jsonpID = 0,
       isObject = $.isObject,
-      key;
+      document = window.document,
+      key,
+      name;
+
+  // trigger a custom event and return false if it was cancelled
+  function triggerAndReturn(context, eventName, data) {
+    var event = $.Event(eventName);
+    $(context).trigger(event, data);
+    return !event.defaultPrevented;
+  }
+
+  // trigger an Ajax "global" event
+  function triggerGlobal(settings, context, eventName, data) {
+    if (settings.global) return triggerAndReturn(context || document, eventName, data);
+  }
+
+  // Number of active Ajax requests
+  $.active = 0;
+
+  function ajaxStart(settings) {
+    if (settings.global && $.active++ === 0) triggerGlobal(settings, null, 'ajaxStart');
+  }
+  function ajaxStop(settings) {
+    if (settings.global && !(--$.active)) triggerGlobal(settings, null, 'ajaxStop');
+  }
+
+  // triggers an extra global event "ajaxBeforeSend" that's like "ajaxSend" but cancelable
+  function ajaxBeforeSend(xhr, settings) {
+    var context = settings.context;
+    if (settings.beforeSend.call(context, xhr, settings) === false ||
+        triggerGlobal(settings, context, 'ajaxBeforeSend', [xhr, settings]) === false)
+      return false;
+
+    triggerGlobal(settings, context, 'ajaxSend', [xhr, settings]);
+  }
+  function ajaxSuccess(data, xhr, settings) {
+    var context = settings.context, status = 'success';
+    settings.success.call(context, data, status, xhr);
+    triggerGlobal(settings, context, 'ajaxSuccess', [xhr, settings, data]);
+    ajaxComplete(status, xhr, settings);
+  }
+  // type: "timeout", "error", "abort", "parsererror"
+  function ajaxError(error, type, xhr, settings) {
+    var context = settings.context;
+    settings.error.call(context, xhr, type, error);
+    triggerGlobal(settings, context, 'ajaxError', [xhr, settings, error]);
+    ajaxComplete(type, xhr, settings);
+  }
+  // status: "success", "notmodified", "error", "timeout", "abort", "parsererror"
+  function ajaxComplete(status, xhr, settings) {
+    var context = settings.context;
+    settings.complete.call(context, xhr, status);
+    triggerGlobal(settings, context, 'ajaxComplete', [xhr, settings]);
+    ajaxStop(settings);
+  }
 
   // Empty function, used as default callback
   function empty() {}
@@ -23,6 +77,8 @@
   //
   //     url     — url to which the request is sent
   //     success — callback that is executed if the request succeeds
+  //     error   — callback that is executed if the server drops error
+  //     context — in which context to execute the callbacks in
   //
   // *Example:*
   //
@@ -34,14 +90,31 @@
   //     });
   //
   $.ajaxJSONP = function(options){
-    var jsonpString = 'jsonp' + ++jsonpID,
-        script = document.createElement('script');
-    window[jsonpString] = function(data){
-      options.success(data);
-      delete window[jsonpString];
+    var callbackName = 'jsonp' + (++jsonpID),
+      script = document.createElement('script'),
+      abort = function(){
+        $(script).remove();
+        if (callbackName in window) window[callbackName] = empty;
+        ajaxComplete('abort', xhr, options);
+      },
+      xhr = { abort: abort }, abortTimeout;
+
+    window[callbackName] = function(data){
+      clearTimeout(abortTimeout);
+      $(script).remove();
+      delete window[callbackName];
+      ajaxSuccess(data, xhr, options);
     };
-    script.src = options.url.replace(/=\?/, '=' + jsonpString);
+
+    script.src = options.url.replace(/=\?/, '=' + callbackName);
     $('head').append(script);
+
+    if (options.timeout > 0) abortTimeout = setTimeout(function(){
+        xhr.abort();
+        ajaxComplete('timeout', xhr, options);
+      }, options.timeout);
+
+    return xhr;
   };
 
   // ### $.ajaxSettings
@@ -59,6 +132,10 @@
     error: empty,
     // Callback that is executed on request complete (both: error and success)
     complete: empty,
+    // The context for the callbacks
+    context: null,
+    // Whether to trigger "global" Ajax events
+    global: true,
     // Transport
     xhr: function () {
       return new window.XMLHttpRequest();
@@ -71,6 +148,8 @@
       html:   'text/html',
       text:   'text/plain'
     },
+    // Whether the request is to another domain
+    crossDomain: false,
     // Default timeout
     timeout: 0
   };
@@ -102,6 +181,8 @@
   //                             the request succeeds
   //     error                 — callback that is executed if
   //                             the server drops error
+  //     context               — in which context to execute the
+  //                             callbacks in
   //
   // *Example:*
   //
@@ -111,8 +192,9 @@
   //        data:       { name: 'Zepto.js' },
   //        dataType:   'html',
   //        timeout:    100,
+  //        context:    $('body'),
   //        success:    function (data) {
-  //            $('body').append(data);
+  //            this.append(data);
   //        },
   //        error:    function (xhr, type) {
   //            alert('Error!');
@@ -120,9 +202,13 @@
   //     });
   //
   $.ajax = function(options){
-    options = options || {};
-    var settings = $.extend({}, options);
-    for (key in $.ajaxSettings) if (!settings[key]) settings[key] = $.ajaxSettings[key];
+    var settings = $.extend({}, options || {});
+    for (key in $.ajaxSettings) if (settings[key] === undefined) settings[key] = $.ajaxSettings[key];
+
+    ajaxStart(settings);
+
+    if (!settings.crossDomain) settings.crossDomain = /^([\w-]+:)?\/\/([^\/]+)/.test(settings.url) &&
+      RegExp.$2 != window.location.host;
 
     if (/=\?/.test(settings.url)) return $.ajaxJSONP(settings);
 
@@ -141,49 +227,50 @@
     }
 
     var mime = settings.accepts[settings.dataType],
-        xhr = $.ajaxSettings.xhr();
+        baseHeaders = { },
+        protocol = /^([\w-]+:)\/\//.test(settings.url) ? RegExp.$1 : window.location.protocol,
+        xhr = $.ajaxSettings.xhr(), abortTimeout;
 
-    settings.headers = $.extend({'X-Requested-With': 'XMLHttpRequest'}, settings.headers || {});
-    if (mime) settings.headers['Accept'] = mime;
+    if (!settings.crossDomain) baseHeaders['X-Requested-With'] = 'XMLHttpRequest';
+    if (mime) baseHeaders['Accept'] = mime;
+    settings.headers = $.extend(baseHeaders, settings.headers || {});
 
     xhr.onreadystatechange = function(){
       if (xhr.readyState == 4) {
+        clearTimeout(abortTimeout);
         var result, error = false;
-        if ((xhr.status >= 200 && xhr.status < 300) || xhr.status == 0) {
+        if ((xhr.status >= 200 && xhr.status < 300) || (xhr.status == 0 && protocol == 'file:')) {
           if (mime == 'application/json' && !(/^\s*$/.test(xhr.responseText))) {
             try { result = JSON.parse(xhr.responseText); }
             catch (e) { error = e; }
           }
           else result = xhr.responseText;
-          if (error) settings.error(xhr, 'parsererror', error);
-          else settings.success(result, 'success', xhr);
+          if (error) ajaxError(error, 'parsererror', xhr, settings);
+          else ajaxSuccess(result, xhr, settings);
         } else {
-          error = true;
-          settings.error(xhr, 'error');
+          ajaxError(null, 'error', xhr, settings);
         }
-        settings.complete(xhr, error ? 'error' : 'success');
       }
     };
 
-    xhr.open(settings.type, settings.url, true);
+    var async = 'async' in settings ? settings.async : true;
+    xhr.open(settings.type, settings.url, async);
 
     if (settings.contentType) settings.headers['Content-Type'] = settings.contentType;
     for (name in settings.headers) xhr.setRequestHeader(name, settings.headers[name]);
 
-    var sendRequest = function () {
-      if (settings.beforeSend(xhr, settings) === false) {
-        xhr.abort();
-        return false;
-      }
-      xhr.send(settings.data);
-    };
-
-    if (settings.timeout > 0) {
-      setTimeout(sendRequest, settings.timeout);
-    } else if (sendRequest() === false) {
+    if (ajaxBeforeSend(xhr, settings) === false) {
+      xhr.abort();
       return false;
     }
 
+    if (settings.timeout > 0) abortTimeout = setTimeout(function(){
+        xhr.onreadystatechange = empty;
+        xhr.abort();
+        ajaxError(null, 'timeout', xhr, settings);
+      }, settings.timeout);
+
+    xhr.send(settings.data);
     return xhr;
   };
 
@@ -205,7 +292,7 @@
   //        }
   //     );
   //
-  $.get = function(url, success){ $.ajax({ url: url, success: success }) };
+  $.get = function(url, success){ return $.ajax({ url: url, success: success }) };
 
   // ### $.post
   //
@@ -232,7 +319,7 @@
   //
   $.post = function(url, data, success, dataType){
     if ($.isFunction(data)) dataType = dataType || success, success = data, data = null;
-    $.ajax({ type: 'POST', url: url, data: data, success: success, dataType: dataType });
+    return $.ajax({ type: 'POST', url: url, data: data, success: success, dataType: dataType });
   };
 
   // ### $.getJSON
@@ -253,7 +340,9 @@
   //        }
   //     );
   //
-  $.getJSON = function(url, success){ $.ajax({ url: url, success: success, dataType: 'json' }) };
+  $.getJSON = function(url, success){
+    return $.ajax({ url: url, success: success, dataType: 'json' });
+  };
 
   // ### $.fn.load
   //
@@ -288,37 +377,43 @@
       self.html(selector ?
         $(document.createElement('div')).html(response).find(selector).html()
         : response);
-      success && success();
+      success && success.call(self);
     });
     return this;
   };
 
+  var escape = encodeURIComponent;
+
+  function serialize(params, obj, traditional, scope){
+    var array = $.isArray(obj);
+    $.each(obj, function(key, value) {
+      if (scope) key = traditional ? scope : scope + '[' + (array ? '' : key) + ']';
+      // handle data in serializeArray() format
+      if (!scope && array) params.add(value.name, value.value);
+      // recurse into nested objects
+      else if (traditional ? $.isArray(value) : isObject(value))
+        serialize(params, value, traditional, key);
+      else params.add(key, value);
+    });
+  }
+
   // ### $.param
   //
-  // Encode object as a string for submission
+  // Encode object as a string of URL-encoded key-value pairs
   //
   // *Arguments:*
   //
   //     obj — object to serialize
-  //     [v] — root node
+  //     [traditional] — perform shallow serialization
   //
   // *Example:*
   //
   //     $.param( { name: 'Zepto.js', version: '0.6' } );
   //
-  $.param = function(obj, v){
-    var result = [], add = function(key, value){
-      result.push(encodeURIComponent(v ? v + '[' + key + ']' : key)
-        + '=' + encodeURIComponent(value));
-      },
-      isObjArray = $.isArray(obj);
-
-    for(key in obj)
-      if(isObject(obj[key]))
-        result.push($.param(obj[key], (v ? v + '[' + key + ']' : key)));
-      else
-        add(isObjArray ? '' : key, obj[key]);
-
-    return result.join('&').replace('%20', '+');
+  $.param = function(obj, traditional){
+    var params = [];
+    params.add = function(k, v){ this.push(escape(k) + '=' + escape(v)) };
+    serialize(params, obj, traditional);
+    return params.join('&').replace('%20', '+');
   };
 })(Zepto);
