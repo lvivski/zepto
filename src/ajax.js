@@ -1,5 +1,5 @@
 //     Zepto.js
-//     (c) 2010, 2011 Thomas Fuchs
+//     (c) 2010-2012 Thomas Fuchs
 //     Zepto.js may be freely distributed under the MIT license.
 
 (function($){
@@ -98,6 +98,11 @@
         ajaxComplete('abort', xhr, options);
       },
       xhr = { abort: abort }, abortTimeout;
+
+    if (options.error) script.onerror = function() {
+      xhr.abort();
+      options.error();
+    };
 
     window[callbackName] = function(data){
       clearTimeout(abortTimeout);

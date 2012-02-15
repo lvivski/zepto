@@ -1,5 +1,5 @@
 //     Zepto.js
-//     (c) 2010, 2011 Thomas Fuchs
+//     (c) 2010-2012 Thomas Fuchs
 //     Zepto.js may be freely distributed under the MIT license.
 
 var Zepto = (function() {
@@ -105,6 +105,7 @@ var Zepto = (function() {
     var found;
     return (element === document && idSelectorRE.test(selector)) ?
       ( (found = element.getElementById(RegExp.$1)) ? [found] : emptyArray ) :
+      (element.nodeType !== 1 && element.nodeType !== 9) ? emptyArray :
       slice.call(
         classSelectorRE.test(selector) ? element.getElementsByClassName(RegExp.$1) :
         tagSelectorRE.test(selector) ? element.getElementsByTagName(selector) :
@@ -123,6 +124,10 @@ var Zepto = (function() {
   $.isFunction = isF;
   $.isObject = isO;
   $.isArray = isA;
+
+  $.inArray = function(elem, array, i) {
+		return emptyArray.indexOf.call(array, elem, i);
+	}
 
   $.map = function(elements, callback) {
     var value, values = [], i, key;
@@ -169,7 +174,7 @@ var Zepto = (function() {
       else document.addEventListener('DOMContentLoaded', function(){ callback($) }, false);
       return this;
     },
-    get: function(idx){ return idx === undefined ? this : this[idx] },
+    get: function(idx){ return idx === undefined ? slice.call(this) : this[idx] },
     size: function(){ return this.length },
     remove: function () {
       return this.each(function () {

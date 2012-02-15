@@ -328,6 +328,21 @@
         t.assertEqualCollection(['a', 'b', 'c'], zepto);
       },
 
+      testGetWithoutIndex: function(t){
+        var zepto = $('#find1 .findme');
+        var array = zepto.get();
+        t.assertFalse(zepto === array);
+        t.assertTrue($.isArray(array));
+        t.assertTrue(array.pop === ([]).pop);
+      },
+
+      testGetWithIndex: function(t){
+        var zepto = $('#find1 .findme');
+        var outofbounds = zepto.get(zepto.size());
+        t.assertEqual(zepto.get(0), zepto[0]);
+        t.assertUndefined(outofbounds);
+      },
+
       testSize: function(t){
         t.assertEqual(4, $('#find1 .findme').size());
       },
@@ -532,6 +547,13 @@
         $.each({a:'b'}, function(key, val) {
           t.assertEqual(this, val);
         });
+      },
+
+      testDollarInArray: function(t) {
+        t.assertIdentical( 0,  $.inArray(1, [1,2,3]) );
+        t.assertIdentical( 1,  $.inArray(2, [1,2,3]) );
+        t.assertIdentical( -1, $.inArray(4, [1,2,3]) );
+        t.assertIdentical( 3,  $.inArray(1, [1,2,3,1], 1) );
       },
 
       testEq: function(t){
@@ -864,6 +886,12 @@
         t.assertLength(11, found);
       },
 
+      testFindWithInvalidNode: function(t) {
+        var found = $('<div><a>1</a></div>\n<div></div>').find('a');
+        t.assertLength(1, found);
+        t.assertEqual('1', found.get(0).innerHTML);
+      },
+
       testFilter: function(t){
         var found = $('div');
         t.assertLength(2, found.filter('.filtertest'));
@@ -997,7 +1025,7 @@
           return idx+html;
         });
         t.assertEqual('<u>0a</u><u>1b</u><u>2c</u>', div.html());
-        
+
         var table = $('#htmltest4'),
           html = '<tbody><tr><td>ok</td></tr></tbody>';
         table.html('<tbody><tr><td>ok</td></tr></tbody>');
