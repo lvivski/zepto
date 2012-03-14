@@ -7,7 +7,8 @@
       isObject = $.isObject,
       document = window.document,
       key,
-      name;
+      name,
+      rscript = /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi;
 
   // trigger a custom event and return false if it was cancelled
   function triggerAndReturn(context, eventName, data) {
@@ -380,7 +381,7 @@
     if (parts.length > 1) url = parts[0], selector = parts[1];
     $.get(url, function(response){
       self.html(selector ?
-        $(document.createElement('div')).html(response).find(selector).html()
+        $(document.createElement('div')).html(response.replace(rscript, "")).find(selector).html()
         : response);
       success && success.call(self);
     });
